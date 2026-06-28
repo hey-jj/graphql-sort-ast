@@ -119,6 +119,34 @@ const CASES: &[(&str, &str, &str)] = &[
         "{ f @z(b:1, a:2) @a }",
         "{\n  f @z(a: 2, b: 1) @a\n}\n",
     ),
+    // Operations of different kinds share one definition kind, so they sort by
+    // name, not by keyword. A mutation named A ranks before a query named Z.
+    (
+        "ops_sort_by_name_across_kinds",
+        "mutation Z { a } query A { b }",
+        "query A {\n  b\n}\n\nmutation Z {\n  a\n}\n",
+    ),
+    // All three operation keywords interleave by name. Order is A, B, C even
+    // though the keywords are subscription, query, mutation.
+    (
+        "all_operation_kinds_by_name",
+        "subscription C { a } query A { b } mutation B { c }",
+        "query A {\n  b\n}\n\nmutation B {\n  c\n}\n\nsubscription C {\n  a\n}\n",
+    ),
+    // Several anonymous operations share an absent name, so they keep source
+    // order. The sort is stable.
+    (
+        "anonymous_ops_stable",
+        "{ b } { a } { c }",
+        "{\n  b\n}\n\n{\n  a\n}\n\n{\n  c\n}\n",
+    ),
+    // Directives on an operation keep source order. Each directive's own
+    // arguments still sort.
+    (
+        "operation_directives_keep_order",
+        "query @z(b:2,a:1) @a { f }",
+        "query @z(a: 1, b: 2) @a {\n  f\n}\n",
+    ),
 ];
 
 #[test]
