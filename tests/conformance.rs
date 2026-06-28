@@ -92,7 +92,7 @@ const CASES: &[(&str, &str, &str)] = &[
     (
         "c15_value_order_untouched",
         "{ f(in:{z:1,a:2}, list:[3,1,2]) }",
-        "{\n  f(in: { z: 1, a: 2 }, list: [3, 1, 2])\n}\n",
+        "{\n  f(in: {z: 1, a: 2}, list: [3, 1, 2])\n}\n",
     ),
     // C16: a single no-argument field prints unchanged.
     ("c16_degenerate", "{ f }", "{\n  f\n}\n"),
@@ -187,7 +187,47 @@ fn anonymous_operation_name_sorts_last() {
 }
 
 #[test]
+fn sorted_documents_hash_equal_for_reordered_inputs() {
+    use std::hash::{Hash, Hasher};
+
+    fn hash(doc: &graphql_sort_ast::Document) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        doc.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    // Two queries that differ only in field order share one cache key. The key
+    // comes from hashing the sorted document directly, no printing needed.
+    let a = sort_ast(parse_document("query Q { c b a }").unwrap());
+    let b = sort_ast(parse_document("query Q { a c b }").unwrap());
+    assert_eq!(hash(&a), hash(&b));
+    assert_eq!(a, b);
+}
+
+#[test]
 fn empty_object_and_list_literals() {
     let got = sorted("{ f(obj: {}, list: []) }");
-    assert_eq!(got, "{\n  f(list: [], obj: {  })\n}\n");
+    assert_eq!(got, "{\n  f(list: [], obj: {})\n}\n");
+}
+
+#[test]
+fn nested_object_value_has_no_inner_spaces() {
+    let got = sorted("{ f(obj: {a: {b: 1}}) }");
+    assert_eq!(got, "{\n  f(obj: {a: {b: 1}})\n}\n");
+}
+
+#[test]
+fn multi_line_string_prints_as_block_string() {
+    let src = "{ f(s: \"\"\"\n  hello\n  world\n\"\"\") }";
+    let got = sorted(src);
+    assert_eq!(got, "{\n  f(s: \"\"\"\nhello\nworld\n\"\"\")\n}\n");
+    // The printed block string parses back to the same document.
+    let reprinted = sorted(&got);
+    assert_eq!(reprinted, got);
+}
+
+#[test]
+fn single_line_string_stays_double_quoted() {
+    let got = sorted("{ f(s: \"one line\") }");
+    assert_eq!(got, "{\n  f(s: \"one line\")\n}\n");
 }

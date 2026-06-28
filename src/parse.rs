@@ -289,7 +289,7 @@ impl<'a> Lexer<'a> {
 }
 
 /// Apply the GraphQL block-string dedent algorithm.
-fn dedent_block_string(raw: &str) -> String {
+pub(crate) fn dedent_block_string(raw: &str) -> String {
     let lines: Vec<&str> = raw.split('\n').map(|l| l.trim_end_matches('\r')).collect();
     let mut common_indent: Option<usize> = None;
     for line in lines.iter().skip(1) {

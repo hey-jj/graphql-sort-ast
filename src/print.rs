@@ -195,7 +195,7 @@ fn print_value(value: &Value, out: &mut String) {
             out.push(']');
         }
         Value::Object(fields) => {
-            out.push_str("{ ");
+            out.push('{');
             for (i, (name, val)) in fields.iter().enumerate() {
                 if i > 0 {
                     out.push_str(", ");
@@ -204,12 +204,52 @@ fn print_value(value: &Value, out: &mut String) {
                 out.push_str(": ");
                 print_value(val, out);
             }
-            out.push_str(" }");
+            out.push('}');
         }
     }
 }
 
 fn print_string_value(text: &str, out: &mut String) {
+    // A multi-line value prints as a block string so the printed document keeps
+    // the value on its own lines instead of escaping the newlines. This matches
+    // how a canonical GraphQL printer renders a string with a line break, and a
+    // multi-line argument re-reads to the same value. A value that would not
+    // re-read unchanged falls back to the escaped form.
+    if text.contains('\n') && block_string_round_trips(text) {
+        print_block_string(text, out);
+    } else {
+        print_quoted_string(text, out);
+    }
+}
+
+/// True when the block-string form of `text` parses back to `text`.
+///
+/// The body is rendered with a leading and trailing newline, the same layout
+/// [`print_block_string`] emits. Parsing dedents that body. The value is safe to
+/// print as a block string only when the dedent is the exact inverse. A carriage
+/// return, a control character other than tab, or shared indentation across all
+/// lines would change on the round trip and is handled by the escaped form
+/// instead.
+fn block_string_round_trips(text: &str) -> bool {
+    let representable = text.chars().all(|c| c == '\n' || c == '\t' || c >= ' ');
+    representable && crate::parse::dedent_block_string(&format!("\n{text}\n")) == text
+}
+
+/// Render a value as a block string (`"""..."""`).
+///
+/// The layout follows the canonical rule: escape any `"""`, put the body on its
+/// own lines, and add a leading and trailing newline for the multi-line form.
+/// The dedent applied at parse time is the inverse of this layout, so the value
+/// re-reads unchanged.
+fn print_block_string(text: &str, out: &mut String) {
+    let escaped = text.replace("\"\"\"", "\\\"\"\"");
+    out.push_str("\"\"\"\n");
+    out.push_str(&escaped);
+    out.push_str("\n\"\"\"");
+}
+
+/// Render a value as a double-quoted string with the standard escapes.
+fn print_quoted_string(text: &str, out: &mut String) {
     out.push('"');
     for ch in text.chars() {
         match ch {
