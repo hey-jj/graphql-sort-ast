@@ -147,8 +147,8 @@ pub struct Field {
     pub arguments: Vec<Argument>,
     /// Directives applied to the field.
     pub directives: Vec<Directive>,
-    /// Nested selection set. Empty when the field is a leaf.
-    pub selection_set: SelectionSet,
+    /// Nested selection set. `None` when the field is a leaf with no body.
+    pub selection_set: Option<SelectionSet>,
 }
 
 /// A fragment spread (`...Name`).

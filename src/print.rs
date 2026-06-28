@@ -96,10 +96,6 @@ fn print_type(ty: &Type, out: &mut String) {
 }
 
 fn print_selection_set(set: &SelectionSet, indent: usize, out: &mut String) {
-    if set.selections.is_empty() {
-        // A leaf field carries an empty selection set. Nothing to print.
-        return;
-    }
     out.push('{');
     for selection in &set.selections {
         out.push('\n');
@@ -131,9 +127,9 @@ fn print_field(field: &Field, indent: usize, out: &mut String) {
     out.push_str(&field.name);
     print_arguments(&field.arguments, out);
     print_directives(&field.directives, out);
-    if !field.selection_set.selections.is_empty() {
+    if let Some(set) = &field.selection_set {
         out.push(' ');
-        print_selection_set(&field.selection_set, indent, out);
+        print_selection_set(set, indent, out);
     }
 }
 

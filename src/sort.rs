@@ -106,7 +106,9 @@ fn sort_field(field: &mut Field) {
         .directives
         .iter_mut()
         .for_each(sort_directive_arguments);
-    sort_selection_set(&mut field.selection_set);
+    if let Some(set) = &mut field.selection_set {
+        sort_selection_set(set);
+    }
 }
 
 fn sort_fragment_spread(spread: &mut FragmentSpread) {

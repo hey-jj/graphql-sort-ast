@@ -154,36 +154,38 @@ impl<'a> Lexer<'a> {
         if self.bytes.get(self.pos) == Some(&b'-') {
             self.pos += 1;
         }
-        while let Some(&c) = self.bytes.get(self.pos) {
-            if c.is_ascii_digit() {
+        // IntegerPart is `0` alone or a non-zero digit followed by more digits.
+        // A leading zero may not be followed by another digit, so `007` errors.
+        match self.bytes.get(self.pos) {
+            Some(&b'0') => {
                 self.pos += 1;
-            } else {
-                break;
+                if matches!(self.bytes.get(self.pos), Some(c) if c.is_ascii_digit()) {
+                    return Err(ParseError::new("integer part has a leading zero"));
+                }
             }
+            Some(&c) if c.is_ascii_digit() => {
+                self.pos += 1;
+                self.consume_digits();
+            }
+            _ => return Err(ParseError::new("expected a digit in number")),
         }
+        // A fractional part requires at least one digit after the `.`.
         if self.bytes.get(self.pos) == Some(&b'.') {
             is_float = true;
             self.pos += 1;
-            while let Some(&c) = self.bytes.get(self.pos) {
-                if c.is_ascii_digit() {
-                    self.pos += 1;
-                } else {
-                    break;
-                }
+            if self.consume_digits() == 0 {
+                return Err(ParseError::new("fraction has no digits"));
             }
         }
+        // An exponent requires at least one digit after `e`/`E` and the sign.
         if matches!(self.bytes.get(self.pos), Some(&b'e') | Some(&b'E')) {
             is_float = true;
             self.pos += 1;
             if matches!(self.bytes.get(self.pos), Some(&b'+') | Some(&b'-')) {
                 self.pos += 1;
             }
-            while let Some(&c) = self.bytes.get(self.pos) {
-                if c.is_ascii_digit() {
-                    self.pos += 1;
-                } else {
-                    break;
-                }
+            if self.consume_digits() == 0 {
+                return Err(ParseError::new("exponent has no digits"));
             }
         }
         let text = self.src[start..self.pos].to_string();
@@ -192,6 +194,15 @@ impl<'a> Lexer<'a> {
         } else {
             Ok(Token::Int(text))
         }
+    }
+
+    /// Advance over a run of ASCII digits and return how many were consumed.
+    fn consume_digits(&mut self) -> usize {
+        let start = self.pos;
+        while matches!(self.bytes.get(self.pos), Some(c) if c.is_ascii_digit()) {
+            self.pos += 1;
+        }
+        self.pos - start
     }
 
     fn lex_string(&mut self) -> Result<Token, ParseError> {
@@ -469,6 +480,9 @@ impl<'a> Parser<'a> {
             return Ok(Vec::new());
         }
         self.expect_punct('(')?;
+        if self.peek_punct(')') {
+            return Err(ParseError::new("variable definition list cannot be empty"));
+        }
         let mut defs = Vec::new();
         while !self.peek_punct(')') {
             self.expect_punct('$')?;
@@ -526,6 +540,9 @@ impl<'a> Parser<'a> {
             return Ok(Vec::new());
         }
         self.expect_punct('(')?;
+        if self.peek_punct(')') {
+            return Err(ParseError::new("argument list cannot be empty"));
+        }
         let mut args = Vec::new();
         while !self.peek_punct(')') {
             let name = self.expect_name()?;
@@ -539,6 +556,9 @@ impl<'a> Parser<'a> {
 
     fn parse_selection_set(&mut self) -> Result<SelectionSet, ParseError> {
         self.expect_punct('{')?;
+        if self.peek_punct('}') {
+            return Err(ParseError::new("selection set cannot be empty"));
+        }
         let mut selections = Vec::new();
         while !self.peek_punct('}') {
             selections.push(self.parse_selection()?);
@@ -590,11 +610,9 @@ impl<'a> Parser<'a> {
         let arguments = self.parse_arguments()?;
         let directives = self.parse_directives()?;
         let selection_set = if self.peek_punct('{') {
-            self.parse_selection_set()?
+            Some(self.parse_selection_set()?)
         } else {
-            SelectionSet {
-                selections: Vec::new(),
-            }
+            None
         };
         Ok(Selection::Field(Field {
             alias,
@@ -721,16 +739,84 @@ mod tests {
 
     #[test]
     fn integer_and_float_text_preserved() {
-        let doc = parse_document("{ f(a: 007, b: 1.50e3, c: -2) }").unwrap();
+        let doc = parse_document("{ f(a: 42, b: 1.50e3, c: -2) }").unwrap();
         let Definition::Operation(op) = &doc.definitions[0] else {
             panic!("expected operation");
         };
         let Selection::Field(field) = &op.selection_set.selections[0] else {
             panic!("expected field");
         };
-        assert_eq!(field.arguments[0].value, Value::Int("007".into()));
+        assert_eq!(field.arguments[0].value, Value::Int("42".into()));
         assert_eq!(field.arguments[1].value, Value::Float("1.50e3".into()));
         assert_eq!(field.arguments[2].value, Value::Int("-2".into()));
+    }
+
+    /// Helper: parse a single argument value or return the parse error.
+    fn parse_arg_value(src: &str) -> Result<Value, ParseError> {
+        let doc = parse_document(src)?;
+        let Definition::Operation(op) = &doc.definitions[0] else {
+            panic!("expected operation");
+        };
+        let Selection::Field(field) = &op.selection_set.selections[0] else {
+            panic!("expected field");
+        };
+        Ok(field.arguments[0].value.clone())
+    }
+
+    #[test]
+    fn leading_zero_integers_are_rejected() {
+        for src in ["{ f(a: 007) }", "{ f(a: 00) }", "{ f(a: 0123) }"] {
+            assert!(parse_document(src).is_err(), "{src} should error");
+        }
+    }
+
+    #[test]
+    fn zero_and_normal_integers_parse() {
+        assert_eq!(
+            parse_arg_value("{ f(a: 0) }").unwrap(),
+            Value::Int("0".into())
+        );
+        assert_eq!(
+            parse_arg_value("{ f(a: -0) }").unwrap(),
+            Value::Int("-0".into())
+        );
+        assert_eq!(
+            parse_arg_value("{ f(a: 10) }").unwrap(),
+            Value::Int("10".into())
+        );
+        assert_eq!(
+            parse_arg_value("{ f(a: 0.5) }").unwrap(),
+            Value::Float("0.5".into())
+        );
+        assert_eq!(
+            parse_arg_value("{ f(a: 0e1) }").unwrap(),
+            Value::Float("0e1".into())
+        );
+    }
+
+    #[test]
+    fn malformed_numbers_are_rejected() {
+        for src in [
+            "{ f(a: -) }",
+            "{ f(a: 1.) }",
+            "{ f(a: 1.0e) }",
+            "{ f(a: 1e+) }",
+        ] {
+            assert!(parse_document(src).is_err(), "{src} should error");
+        }
+    }
+
+    #[test]
+    fn empty_argument_and_variable_lists_are_rejected() {
+        assert!(parse_document("{ f() }").is_err());
+        assert!(parse_document("query () { f }").is_err());
+    }
+
+    #[test]
+    fn empty_selection_set_is_rejected() {
+        assert!(parse_document("query { }").is_err());
+        assert!(parse_document("{ ... on T { } }").is_err());
+        assert!(parse_document("fragment F on T { }").is_err());
     }
 
     #[test]

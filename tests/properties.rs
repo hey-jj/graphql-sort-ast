@@ -49,9 +49,7 @@ fn selection_strategy() -> impl Strategy<Value = Selection> {
                 name,
                 arguments,
                 directives,
-                selection_set: SelectionSet {
-                    selections: Vec::new(),
-                },
+                selection_set: None,
             })
         });
 
@@ -70,7 +68,7 @@ fn selection_strategy() -> impl Strategy<Value = Selection> {
                         name,
                         arguments,
                         directives,
-                        selection_set: SelectionSet { selections },
+                        selection_set: Some(SelectionSet { selections }),
                     })
                 }),
             // Fragment spread.
@@ -186,7 +184,9 @@ fn assert_selection_set_sorted(set: &SelectionSet) {
             Selection::Field(field) => {
                 assert_arguments_sorted(&field.arguments);
                 assert_directive_args_sorted(&field.directives);
-                assert_selection_set_sorted(&field.selection_set);
+                if let Some(set) = &field.selection_set {
+                    assert_selection_set_sorted(set);
+                }
             }
             Selection::FragmentSpread(spread) => assert_directives_sorted(&spread.directives),
             Selection::InlineFragment(inline) => {
@@ -293,7 +293,9 @@ fn summarize_selection_set(set: &SelectionSet, counts: &mut BTreeMap<String, usi
                     *counts.entry(format!("arg:{}", arg.name)).or_insert(0) += 1;
                 }
                 summarize_directives(&field.directives, counts);
-                summarize_selection_set(&field.selection_set, counts);
+                if let Some(set) = &field.selection_set {
+                    summarize_selection_set(set, counts);
+                }
             }
             Selection::FragmentSpread(spread) => {
                 *counts
