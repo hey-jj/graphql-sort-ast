@@ -13,14 +13,14 @@
 /// A parsed executable GraphQL document.
 ///
 /// `definitions` holds operations and fragments in source order until sorted.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Document {
     /// Top-level definitions: operations and fragment definitions.
     pub definitions: Vec<Definition>,
 }
 
 /// A top-level definition in a document.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Definition {
     /// An operation definition (query, mutation, or subscription).
     Operation(OperationDefinition),
@@ -29,7 +29,7 @@ pub enum Definition {
 }
 
 /// The operation kind keyword.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OperationType {
     /// `query`
     Query,
@@ -41,6 +41,7 @@ pub enum OperationType {
 
 impl OperationType {
     /// The lower-case keyword used when printing the operation.
+    #[must_use]
     pub fn keyword(self) -> &'static str {
         match self {
             OperationType::Query => "query",
@@ -55,7 +56,7 @@ impl OperationType {
 /// An operation with no name, no variable definitions, and no directives is a
 /// shorthand selection set (`{ ... }`). The [`is_shorthand`](Self::is_shorthand)
 /// helper detects that form so the printer can omit the leading keyword.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OperationDefinition {
     /// Operation kind. Always `Query` for the shorthand selection-set form.
     pub operation: OperationType,
@@ -71,6 +72,7 @@ pub struct OperationDefinition {
 
 impl OperationDefinition {
     /// True when this prints as a bare selection set with no keyword or name.
+    #[must_use]
     pub fn is_shorthand(&self) -> bool {
         self.operation == OperationType::Query
             && self.name.is_none()
@@ -80,7 +82,7 @@ impl OperationDefinition {
 }
 
 /// A fragment definition (`fragment Name on Type { ... }`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FragmentDefinition {
     /// Fragment name.
     pub name: String,
@@ -95,18 +97,18 @@ pub struct FragmentDefinition {
 }
 
 /// A variable definition (`$name: Type = default`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariableDefinition {
     /// Variable name without the leading `$`.
-    pub variable: String,
+    pub name: String,
     /// Declared type.
-    pub var_type: Type,
+    pub ty: Type,
     /// Default value, if any.
     pub default_value: Option<Value>,
 }
 
 /// A GraphQL type reference.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     /// A named type such as `Int`.
     Named(String),
@@ -117,14 +119,14 @@ pub enum Type {
 }
 
 /// A selection set (`{ ... }`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SelectionSet {
     /// The selections, sorted by kind then name.
     pub selections: Vec<Selection>,
 }
 
 /// One selection inside a selection set.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Selection {
     /// A field selection.
     Field(Field),
@@ -135,7 +137,7 @@ pub enum Selection {
 }
 
 /// A field selection.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Field {
     /// Optional alias.
     pub alias: Option<String>,
@@ -150,7 +152,7 @@ pub struct Field {
 }
 
 /// A fragment spread (`...Name`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FragmentSpread {
     /// The referenced fragment name.
     pub fragment_name: String,
@@ -162,7 +164,7 @@ pub struct FragmentSpread {
 ///
 /// An inline fragment carries no name. In a selection set it sorts after fields
 /// and spreads because its kind ranks last.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InlineFragment {
     /// Optional type condition after `on`.
     pub type_condition: Option<String>,
@@ -173,7 +175,7 @@ pub struct InlineFragment {
 }
 
 /// A directive (`@name(args)`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Directive {
     /// Directive name without the leading `@`.
     pub name: String,
@@ -182,7 +184,7 @@ pub struct Directive {
 }
 
 /// A named argument (`name: value`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Argument {
     /// Argument name.
     pub name: String,
@@ -194,7 +196,7 @@ pub struct Argument {
 ///
 /// `Object` keeps fields in source order. The sort transform never reorders
 /// values, so object fields and list elements print exactly as authored.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Value {
     /// A variable reference (`$name`).
     Variable(String),

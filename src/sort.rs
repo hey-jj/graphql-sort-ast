@@ -44,12 +44,15 @@ use std::cmp::Ordering;
 /// let sorted = sort_ast(doc);
 /// assert_eq!(print_document(&sorted), "query Foo {\n  a\n  b\n  c\n}\n");
 /// ```
+#[must_use]
 pub fn sort_ast(mut document: Document) -> Document {
     document
         .definitions
         .iter_mut()
         .for_each(sort_definition_children);
-    stable_sort_by(&mut document.definitions, |a, b| {
+    // `slice::sort_by` is stable, so equal keys keep their source order. Every
+    // sort in this module relies on that.
+    document.definitions.sort_by(|a, b| {
         let by_kind = definition_kind_rank(a).cmp(&definition_kind_rank(b));
         by_kind.then_with(|| compare_optional_name(definition_name(a), definition_name(b)))
     });
@@ -79,7 +82,7 @@ fn sort_fragment(frag: &mut FragmentDefinition) {
 
 fn sort_selection_set(set: &mut SelectionSet) {
     set.selections.iter_mut().for_each(sort_selection_children);
-    stable_sort_by(&mut set.selections, |a, b| {
+    set.selections.sort_by(|a, b| {
         let by_kind = selection_kind_rank(a).cmp(&selection_kind_rank(b));
         by_kind.then_with(|| compare_optional_name(selection_name(a), selection_name(b)))
     });
@@ -94,7 +97,9 @@ fn sort_selection_children(selection: &mut Selection) {
 }
 
 fn sort_field(field: &mut Field) {
-    stable_sort_by(&mut field.arguments, |a, b| compare_str(&a.name, &b.name));
+    field
+        .arguments
+        .sort_by(|a, b| compare_str(&a.name, &b.name));
     // The field directive list keeps source order. Each directive's arguments
     // still sort.
     field
@@ -116,18 +121,18 @@ fn sort_inline_fragment(inline: &mut InlineFragment) {
 /// Sort a directive list by name, and sort each directive's arguments.
 fn sort_directives(directives: &mut [Directive]) {
     directives.iter_mut().for_each(sort_directive_arguments);
-    stable_sort_by(directives, |a, b| compare_str(&a.name, &b.name));
+    directives.sort_by(|a, b| compare_str(&a.name, &b.name));
 }
 
 /// Sort one directive's arguments by name. The directive itself stays in place.
 fn sort_directive_arguments(directive: &mut Directive) {
-    stable_sort_by(&mut directive.arguments, |a, b| {
-        compare_str(&a.name, &b.name)
-    });
+    directive
+        .arguments
+        .sort_by(|a, b| compare_str(&a.name, &b.name));
 }
 
 fn sort_variable_definitions(defs: &mut [crate::ast::VariableDefinition]) {
-    stable_sort_by(defs, |a, b| compare_str(&a.variable, &b.variable));
+    defs.sort_by(|a, b| compare_str(&a.name, &b.name));
 }
 
 /// Kind rank for document definitions. Fragments rank before operations to match
@@ -187,13 +192,4 @@ fn compare_optional_name(a: Option<&str>, b: Option<&str>) -> Ordering {
 /// any string value.
 fn compare_str(a: &str, b: &str) -> Ordering {
     a.encode_utf16().cmp(b.encode_utf16())
-}
-
-/// Stable sort wrapper. The standard library `sort_by` is stable, so equal keys
-/// keep their source order.
-fn stable_sort_by<T, F>(items: &mut [T], compare: F)
-where
-    F: FnMut(&T, &T) -> Ordering,
-{
-    items.sort_by(compare);
 }

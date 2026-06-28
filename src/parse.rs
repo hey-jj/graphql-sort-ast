@@ -66,10 +66,18 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     fn new(src: &'a str) -> Self {
+        // A leading byte-order mark (U+FEFF, encoded as EF BB BF) is the only
+        // place these bytes are ignorable. Strip it once here so the token loop
+        // never treats a stray continuation byte as whitespace.
+        let pos = if src.as_bytes().starts_with(&[0xef, 0xbb, 0xbf]) {
+            3
+        } else {
+            0
+        };
         Lexer {
             src,
             bytes: src.as_bytes(),
-            pos: 0,
+            pos,
         }
     }
 
@@ -79,10 +87,8 @@ impl<'a> Lexer<'a> {
                 return Ok(());
             };
             match b {
-                b' ' | b'\t' | b'\r' | b'\n' | b',' | 0xef | 0xbb | 0xbf => {
-                    // Whitespace, line terminators, commas, and BOM bytes are
-                    // insignificant. The BOM is three bytes but skipping each
-                    // byte individually is harmless here.
+                b' ' | b'\t' | b'\r' | b'\n' | b',' => {
+                    // Whitespace, line terminators, and commas are insignificant.
                     self.pos += 1;
                 }
                 b'#' => {
@@ -112,7 +118,7 @@ impl<'a> Lexer<'a> {
             }
             b'.' => self.lex_spread(),
             b'"' => self.lex_string(),
-            b'_' | b'A'..=b'z' if b.is_ascii_alphabetic() || b == b'_' => self.lex_name(),
+            b if b == b'_' || b.is_ascii_alphabetic() => self.lex_name(),
             b'-' | b'0'..=b'9' => self.lex_number(),
             _ => Err(ParseError::new(format!(
                 "unexpected character {:?}",
@@ -466,9 +472,9 @@ impl<'a> Parser<'a> {
         let mut defs = Vec::new();
         while !self.peek_punct(')') {
             self.expect_punct('$')?;
-            let variable = self.expect_name()?;
+            let name = self.expect_name()?;
             self.expect_punct(':')?;
-            let var_type = self.parse_type()?;
+            let ty = self.parse_type()?;
             let default_value = if self.peek_punct('=') {
                 self.expect_punct('=')?;
                 Some(self.parse_value()?)
@@ -479,8 +485,8 @@ impl<'a> Parser<'a> {
             // The sort transform never reorders them and the printer omits them.
             self.parse_directives()?;
             defs.push(VariableDefinition {
-                variable,
-                var_type,
+                name,
+                ty,
                 default_value,
             });
         }

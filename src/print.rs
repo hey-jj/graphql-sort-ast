@@ -11,6 +11,7 @@ use crate::ast::{
 };
 
 /// Render a document to its canonical string form.
+#[must_use]
 pub fn print_document(document: &Document) -> String {
     let mut out = String::new();
     for (i, def) in document.definitions.iter().enumerate() {
@@ -68,9 +69,9 @@ fn print_variable_definitions(defs: &[VariableDefinition], out: &mut String) {
             out.push_str(", ");
         }
         out.push('$');
-        out.push_str(&def.variable);
+        out.push_str(&def.name);
         out.push_str(": ");
-        print_type(&def.var_type, out);
+        print_type(&def.ty, out);
         if let Some(default) = &def.default_value {
             out.push_str(" = ");
             print_value(default, out);
