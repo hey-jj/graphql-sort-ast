@@ -1,0 +1,10 @@
+[package]
+name = "graphql-sort-ast"
+version = "0.1.0"
+edition = "2021"
+description = "normalize GraphQL queries for stable cache keys/signatures"
+license = "MIT"
+repository = "https://github.com/hey-jj/graphql-sort-ast"
+readme = "README.md"
+
+[dependencies]
