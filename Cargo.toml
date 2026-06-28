@@ -6,5 +6,12 @@ description = "normalize GraphQL queries for stable cache keys/signatures"
 license = "MIT"
 repository = "https://github.com/hey-jj/graphql-sort-ast"
 readme = "README.md"
+keywords = ["graphql", "ast", "sort", "normalize", "cache"]
+categories = ["parsing", "caching"]
 
 [dependencies]
+
+# proptest drives the generative property tests (idempotence, sortedness,
+# stability, semantic preservation). It is a test-only dependency.
+[dev-dependencies]
+proptest = "1.11.0"
