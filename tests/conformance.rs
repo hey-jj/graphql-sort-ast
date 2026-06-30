@@ -231,3 +231,10 @@ fn single_line_string_stays_double_quoted() {
     let got = sorted("{ f(s: \"one line\") }");
     assert_eq!(got, "{\n  f(s: \"one line\")\n}\n");
 }
+
+#[test]
+fn number_followed_by_name_is_rejected() {
+    // `1b` is two adjacent tokens the grammar forbids. The parser must reject it
+    // instead of silently splitting it into a number and a separate argument.
+    assert!(parse_document("query { f(a: 1b: 2) }").is_err());
+}

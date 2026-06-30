@@ -188,6 +188,13 @@ impl<'a> Lexer<'a> {
                 return Err(ParseError::new("exponent has no digits"));
             }
         }
+        // A numeric literal may not run straight into a name or a second dot.
+        // The grammar forbids `1b` and `1.2.3`, so reject them instead of
+        // splitting them into a number plus a separate token.
+        if matches!(self.bytes.get(self.pos), Some(&c) if c == b'_' || c.is_ascii_alphabetic() || c == b'.')
+        {
+            return Err(ParseError::new("number followed by invalid character"));
+        }
         let text = self.src[start..self.pos].to_string();
         if is_float {
             Ok(Token::Float(text))
