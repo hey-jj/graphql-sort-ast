@@ -2,8 +2,8 @@
 //!
 //! [`sort_ast`] returns a new document whose order-insensitive sibling lists are
 //! sorted into a canonical order. Two documents that differ only in the order of
-//! definitions, selections, arguments, directives, or variable definitions
-//! normalize to the same sorted document and print to the same string.
+//! definitions, selections, arguments, or variable definitions normalize to the
+//! same sorted document and print to the same string.
 //!
 //! # Sort keys
 //!
@@ -13,8 +13,10 @@
 //! - Selection set selections: by kind then name. Fields rank before fragment
 //!   spreads, which rank before inline fragments.
 //! - Field and directive arguments: by argument name.
-//! - Directives on spreads, inline fragments, and fragment definitions: by name.
 //! - Operation and fragment variable definitions: by variable name.
+//!
+//! Directive lists keep their source order in every context, because directive
+//! order can carry meaning. Each directive's own arguments still sort.
 //!
 //! # Ordering rules
 //!
@@ -76,7 +78,9 @@ fn sort_operation(op: &mut OperationDefinition) {
 
 fn sort_fragment(frag: &mut FragmentDefinition) {
     sort_variable_definitions(&mut frag.variable_definitions);
-    sort_directives(&mut frag.directives);
+    frag.directives
+        .iter_mut()
+        .for_each(sort_directive_arguments);
     sort_selection_set(&mut frag.selection_set);
 }
 
@@ -112,18 +116,18 @@ fn sort_field(field: &mut Field) {
 }
 
 fn sort_fragment_spread(spread: &mut FragmentSpread) {
-    sort_directives(&mut spread.directives);
+    spread
+        .directives
+        .iter_mut()
+        .for_each(sort_directive_arguments);
 }
 
 fn sort_inline_fragment(inline: &mut InlineFragment) {
-    sort_directives(&mut inline.directives);
+    inline
+        .directives
+        .iter_mut()
+        .for_each(sort_directive_arguments);
     sort_selection_set(&mut inline.selection_set);
-}
-
-/// Sort a directive list by name, and sort each directive's arguments.
-fn sort_directives(directives: &mut [Directive]) {
-    directives.iter_mut().for_each(sort_directive_arguments);
-    directives.sort_by(|a, b| compare_str(&a.name, &b.name));
 }
 
 /// Sort one directive's arguments by name. The directive itself stays in place.
@@ -134,6 +138,8 @@ fn sort_directive_arguments(directive: &mut Directive) {
 }
 
 fn sort_variable_definitions(defs: &mut [crate::ast::VariableDefinition]) {
+    defs.iter_mut()
+        .for_each(|def| def.directives.iter_mut().for_each(sort_directive_arguments));
     defs.sort_by(|a, b| compare_str(&a.name, &b.name));
 }
 

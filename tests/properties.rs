@@ -168,7 +168,7 @@ fn assert_sorted(doc: &Document) {
         match def {
             Definition::Operation(op) => assert_selection_set_sorted(&op.selection_set),
             Definition::Fragment(frag) => {
-                assert_directives_sorted(&frag.directives);
+                assert_directive_args_sorted(&frag.directives);
                 assert_selection_set_sorted(&frag.selection_set);
             }
         }
@@ -188,18 +188,13 @@ fn assert_selection_set_sorted(set: &SelectionSet) {
                     assert_selection_set_sorted(set);
                 }
             }
-            Selection::FragmentSpread(spread) => assert_directives_sorted(&spread.directives),
+            Selection::FragmentSpread(spread) => assert_directive_args_sorted(&spread.directives),
             Selection::InlineFragment(inline) => {
-                assert_directives_sorted(&inline.directives);
+                assert_directive_args_sorted(&inline.directives);
                 assert_selection_set_sorted(&inline.selection_set);
             }
         }
     }
-}
-
-fn assert_directives_sorted(directives: &[Directive]) {
-    assert_non_decreasing(directives, |d| name_key(&d.name));
-    assert_directive_args_sorted(directives);
 }
 
 fn assert_directive_args_sorted(directives: &[Directive]) {

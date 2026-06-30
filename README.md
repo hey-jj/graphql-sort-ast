@@ -5,8 +5,8 @@ and signatures.
 
 `sort_ast` reorders the order-insensitive sibling lists of an executable GraphQL
 document into a fixed order. Two queries that differ only in the order of
-fields, arguments, directives, definitions, or variable definitions normalize to
-the same document. They print to the same string and hash to the same signature.
+fields, arguments, definitions, or variable definitions normalize to the same
+document. They print to the same string and hash to the same signature.
 A cache can then treat semantically identical queries as one, and a client that
 emits query text in nondeterministic order still produces a stable key.
 
@@ -38,9 +38,7 @@ assert_eq!(print_document(&sorted), "query Foo {\n  a\n  b\n  c\n}\n");
 | Operation | variable definitions | variable name |
 | Selection set | selections | kind, then name |
 | Field | arguments | argument name |
-| Fragment spread | directives | directive name |
-| Inline fragment | directives | directive name |
-| Fragment definition | variable definitions, then directives | variable name, directive name |
+| Fragment definition | variable definitions | variable name |
 | Directive | arguments | argument name |
 
 Definitions sort fragments before operations. Selections sort fields first,
@@ -48,8 +46,8 @@ then fragment spreads, then inline fragments. Names compare by UTF-16 code unit,
 case-sensitive, with no locale collation. A missing name sorts after every
 present name. Equal keys keep their source order because the sort is stable.
 
-Field and operation directive lists keep their source order. Each directive's
-own arguments still sort.
+Directive lists keep their source order in every context, because directive
+order can carry meaning. Each directive's own arguments still sort.
 
 ## What does not get sorted
 

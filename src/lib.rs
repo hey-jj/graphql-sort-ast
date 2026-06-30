@@ -2,8 +2,8 @@
 //!
 //! [`sort_ast`] reorders the order-insensitive sibling lists of an executable
 //! GraphQL document into a canonical order. Two queries that differ only in the
-//! order of fields, arguments, directives, definitions, or variable definitions
-//! normalize to the same document. They print to the same string and hash to the
+//! order of fields, arguments, definitions, or variable definitions normalize to
+//! the same document. They print to the same string and hash to the
 //! same signature. This helps a cache treat semantically identical queries as
 //! one, and it defends against clients that emit query text in nondeterministic
 //! order.

@@ -76,6 +76,7 @@ fn print_variable_definitions(defs: &[VariableDefinition], out: &mut String) {
             out.push_str(" = ");
             print_value(default, out);
         }
+        print_directives(&def.directives, out);
     }
     out.push(')');
 }

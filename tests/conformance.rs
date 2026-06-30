@@ -55,23 +55,24 @@ const CASES: &[(&str, &str, &str)] = &[
         "{ f(z:1, a:2, m:3) }",
         "{\n  f(a: 2, m: 3, z: 1)\n}\n",
     ),
-    // C8: directives on a fragment spread sort by name.
+    // C8: directives on a fragment spread keep source order. Directive order can
+    // carry meaning, so the transform must not reorder them.
     (
         "c8_spread_directives",
         "query { ...F @z @a }",
-        "{\n  ...F @a @z\n}\n",
+        "{\n  ...F @z @a\n}\n",
     ),
-    // C9: directives on an inline fragment sort by name.
+    // C9: directives on an inline fragment keep source order.
     (
         "c9_inline_directives",
         "{ ... on T @z @a { x } }",
-        "{\n  ... on T @a @z {\n    x\n  }\n}\n",
+        "{\n  ... on T @z @a {\n    x\n  }\n}\n",
     ),
-    // C10: directives on a fragment definition sort by name.
+    // C10: directives on a fragment definition keep source order.
     (
         "c10_fragment_def_directives",
         "fragment F on T @z @a { x }",
-        "fragment F on T @a @z {\n  x\n}\n",
+        "fragment F on T @z @a {\n  x\n}\n",
     ),
     // C11: arguments of a directive sort by name.
     (
@@ -112,6 +113,13 @@ const CASES: &[(&str, &str, &str)] = &[
         "var_defaults",
         "query ($b:Int = 3, $a:String = \"x\") { f }",
         "query ($a: String = \"x\", $b: Int = 3) {\n  f\n}\n",
+    ),
+    // Directives on a variable definition survive the round trip and keep their
+    // source order. The directive's own arguments still sort.
+    (
+        "var_def_directives",
+        "query ($id: ID! @b @a(y:1, x:2)) { f }",
+        "query ($id: ID! @b @a(x: 2, y: 1)) {\n  f\n}\n",
     ),
     // Field directives keep source order. The directive's own arguments sort.
     (

@@ -502,13 +502,12 @@ impl<'a> Parser<'a> {
             } else {
                 None
             };
-            // Directives on a variable definition are consumed but not stored.
-            // The sort transform never reorders them and the printer omits them.
-            self.parse_directives()?;
+            let directives = self.parse_directives()?;
             defs.push(VariableDefinition {
                 name,
                 ty,
                 default_value,
+                directives,
             });
         }
         self.expect_punct(')')?;

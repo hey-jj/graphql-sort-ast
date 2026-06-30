@@ -105,6 +105,8 @@ pub struct VariableDefinition {
     pub ty: Type,
     /// Default value, if any.
     pub default_value: Option<Value>,
+    /// Directives applied to the variable definition, kept in source order.
+    pub directives: Vec<Directive>,
 }
 
 /// A GraphQL type reference.
@@ -156,7 +158,7 @@ pub struct Field {
 pub struct FragmentSpread {
     /// The referenced fragment name.
     pub fragment_name: String,
-    /// Directives applied to the spread, sorted by name.
+    /// Directives applied to the spread, kept in source order.
     pub directives: Vec<Directive>,
 }
 
@@ -168,7 +170,7 @@ pub struct FragmentSpread {
 pub struct InlineFragment {
     /// Optional type condition after `on`.
     pub type_condition: Option<String>,
-    /// Directives applied to the inline fragment, sorted by name.
+    /// Directives applied to the inline fragment, kept in source order.
     pub directives: Vec<Directive>,
     /// The inline fragment body.
     pub selection_set: SelectionSet,
