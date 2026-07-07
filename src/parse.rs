@@ -66,23 +66,19 @@ struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     fn new(src: &'a str) -> Self {
-        // A leading byte-order mark (U+FEFF, encoded as EF BB BF) is the only
-        // place these bytes are ignorable. Strip it once here so the token loop
-        // never treats a stray continuation byte as whitespace.
-        let pos = if src.as_bytes().starts_with(&[0xef, 0xbb, 0xbf]) {
-            3
-        } else {
-            0
-        };
         Lexer {
             src,
             bytes: src.as_bytes(),
-            pos,
+            pos: 0,
         }
     }
 
     fn skip_ignored(&mut self) -> Result<(), ParseError> {
         loop {
+            if self.bytes[self.pos..].starts_with(&[0xef, 0xbb, 0xbf]) {
+                self.pos += 3;
+                continue;
+            }
             let Some(&b) = self.bytes.get(self.pos) else {
                 return Ok(());
             };
@@ -262,16 +258,37 @@ impl<'a> Lexer<'a> {
             b'r' => out.push('\r'),
             b't' => out.push('\t'),
             b'u' => {
-                let hex = self
-                    .src
-                    .get(self.pos..self.pos + 4)
-                    .ok_or_else(|| ParseError::new("incomplete unicode escape"))?;
-                let code = u32::from_str_radix(hex, 16)
-                    .map_err(|_| ParseError::new("invalid unicode escape"))?;
-                let ch = char::from_u32(code)
-                    .ok_or_else(|| ParseError::new("invalid unicode code point"))?;
-                out.push(ch);
-                self.pos += 4;
+                if self.bytes.get(self.pos) == Some(&b'{') {
+                    self.pos += 1;
+                    let start = self.pos;
+                    while matches!(self.bytes.get(self.pos), Some(c) if c.is_ascii_hexdigit()) {
+                        self.pos += 1;
+                    }
+                    if self.pos == start {
+                        return Err(ParseError::new("invalid unicode escape"));
+                    }
+                    if self.bytes.get(self.pos) != Some(&b'}') {
+                        return Err(ParseError::new("invalid unicode escape"));
+                    }
+                    let hex = &self.src[start..self.pos];
+                    self.pos += 1;
+                    let code = u32::from_str_radix(hex, 16)
+                        .map_err(|_| ParseError::new("invalid unicode escape"))?;
+                    let ch = char::from_u32(code)
+                        .ok_or_else(|| ParseError::new("invalid unicode code point"))?;
+                    out.push(ch);
+                } else {
+                    let hex = self
+                        .src
+                        .get(self.pos..self.pos + 4)
+                        .ok_or_else(|| ParseError::new("incomplete unicode escape"))?;
+                    let code = u32::from_str_radix(hex, 16)
+                        .map_err(|_| ParseError::new("invalid unicode escape"))?;
+                    let ch = char::from_u32(code)
+                        .ok_or_else(|| ParseError::new("invalid unicode code point"))?;
+                    out.push(ch);
+                    self.pos += 4;
+                }
             }
             other => {
                 return Err(ParseError::new(format!(
@@ -311,7 +328,7 @@ pub(crate) fn dedent_block_string(raw: &str) -> String {
     let lines: Vec<&str> = raw.split('\n').map(|l| l.trim_end_matches('\r')).collect();
     let mut common_indent: Option<usize> = None;
     for line in lines.iter().skip(1) {
-        let indent = line.len() - line.trim_start().len();
+        let indent = ascii_indent_len(line);
         if indent < line.len() {
             common_indent = Some(match common_indent {
                 Some(c) => c.min(indent),
@@ -325,7 +342,7 @@ pub(crate) fn dedent_block_string(raw: &str) -> String {
             result.push((*line).to_string());
         } else {
             let indent = common_indent.unwrap_or(0);
-            let trimmed = if line.len() >= indent {
+            let trimmed = if ascii_indent_len(line) >= indent {
                 &line[indent..]
             } else {
                 ""
@@ -333,13 +350,31 @@ pub(crate) fn dedent_block_string(raw: &str) -> String {
             result.push(trimmed.to_string());
         }
     }
-    while result.first().map(|l| l.trim().is_empty()).unwrap_or(false) {
+    while result
+        .first()
+        .map(|l| is_ascii_blank_line(l))
+        .unwrap_or(false)
+    {
         result.remove(0);
     }
-    while result.last().map(|l| l.trim().is_empty()).unwrap_or(false) {
+    while result
+        .last()
+        .map(|l| is_ascii_blank_line(l))
+        .unwrap_or(false)
+    {
         result.pop();
     }
     result.join("\n")
+}
+
+fn ascii_indent_len(line: &str) -> usize {
+    line.bytes()
+        .take_while(|b| matches!(b, b' ' | b'\t'))
+        .count()
+}
+
+fn is_ascii_blank_line(line: &str) -> bool {
+    line.bytes().all(|b| matches!(b, b' ' | b'\t'))
 }
 
 struct Parser<'a> {
@@ -468,6 +503,9 @@ impl<'a> Parser<'a> {
     fn parse_fragment_definition(&mut self) -> Result<FragmentDefinition, ParseError> {
         self.bump()?; // `fragment`
         let name = self.expect_name()?;
+        if name == "on" {
+            return Err(ParseError::new("fragment name cannot be 'on'"));
+        }
         let variable_definitions = self.parse_variable_definitions()?;
         self.expect_keyword("on")?;
         let type_condition = self.expect_name()?;
@@ -498,7 +536,7 @@ impl<'a> Parser<'a> {
             let ty = self.parse_type()?;
             let default_value = if self.peek_punct('=') {
                 self.expect_punct('=')?;
-                Some(self.parse_value()?)
+                Some(self.parse_const_value()?)
             } else {
                 None
             };
@@ -630,8 +668,19 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_value(&mut self) -> Result<Value, ParseError> {
+        self.parse_value_with_variables(true)
+    }
+
+    fn parse_const_value(&mut self) -> Result<Value, ParseError> {
+        self.parse_value_with_variables(false)
+    }
+
+    fn parse_value_with_variables(&mut self, allow_variables: bool) -> Result<Value, ParseError> {
         match self.current.clone() {
             Token::Punct('$') => {
+                if !allow_variables {
+                    return Err(ParseError::new("variable is not allowed in const value"));
+                }
                 self.bump()?;
                 Ok(Value::Variable(self.expect_name()?))
             }
@@ -660,7 +709,7 @@ impl<'a> Parser<'a> {
                 self.bump()?;
                 let mut items = Vec::new();
                 while !self.peek_punct(']') {
-                    items.push(self.parse_value()?);
+                    items.push(self.parse_value_with_variables(allow_variables)?);
                 }
                 self.expect_punct(']')?;
                 Ok(Value::List(items))
@@ -671,7 +720,7 @@ impl<'a> Parser<'a> {
                 while !self.peek_punct('}') {
                     let name = self.expect_name()?;
                     self.expect_punct(':')?;
-                    let value = self.parse_value()?;
+                    let value = self.parse_value_with_variables(allow_variables)?;
                     fields.push((name, value));
                 }
                 self.expect_punct('}')?;
@@ -840,5 +889,48 @@ mod tests {
     fn nested_non_null_list_type_round_trips() {
         let out = roundtrip("query ($v: [Int!]!) { f }");
         assert_eq!(out, "query ($v: [Int!]!) {\n  f\n}\n");
+    }
+
+    #[test]
+    fn variable_default_values_reject_variables() {
+        for src in [
+            "query ($x: Int = $y) { f }",
+            "query ($x: [Int] = [$y]) { f }",
+            "query ($x: Input = {y: $y}) { f }",
+        ] {
+            assert!(parse_document(src).is_err(), "{src} should error");
+        }
+
+        assert_eq!(
+            parse_arg_value("query ($x: Int) { f(a: $x) }").unwrap(),
+            Value::Variable("x".into())
+        );
+    }
+
+    #[test]
+    fn fragment_definition_rejects_on_as_name() {
+        assert!(parse_document("fragment on on T { f }").is_err());
+        assert!(parse_document("fragment F on T { f }").is_ok());
+    }
+
+    #[test]
+    fn byte_order_mark_is_ignored_between_tokens() {
+        assert!(parse_document("query Q\u{feff}{ f }").is_ok());
+    }
+
+    #[test]
+    fn braced_unicode_escape_decodes() {
+        assert_eq!(
+            parse_arg_value(r#"{ f(s: "\u{1F600}") }"#).unwrap(),
+            Value::String("\u{1f600}".into())
+        );
+    }
+
+    #[test]
+    fn block_string_dedent_uses_ascii_indent() {
+        assert_eq!(
+            parse_arg_value("{ f(s: \"\"\"\n\u{00a0}x\n \u{00a0}\n\"\"\") }").unwrap(),
+            Value::String("\u{00a0}x\n \u{00a0}".into())
+        );
     }
 }
